@@ -2,3 +2,10 @@ name = "LaunchJobs"
 uuid = "4a98b0a9-4463-44f0-b01e-b77da3f094ac"
 authors = ["tudor <tudor.pahomi@gmail.com>"]
 version = "0.1.0"
+
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+OrderedCollections = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+myLibs = "0cc41259-d48e-4a81-8a6d-ec7e330e4bca"
