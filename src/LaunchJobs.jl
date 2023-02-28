@@ -11,31 +11,50 @@ import OrderedCollections: OrderedDict
 #---------------------------------------------------------------------------#
 
 
-
-function hasarg(args_user::AbstractVector{<:AbstractString},
-								arg0::AbstractString
-								)::Tuple{Bool,AbstractVector{<:AbstractString}}
+function hasargval(args_user::AbstractVector{<:AbstractString}, 
+									 arg0::AbstractString,
+									 nvals::Int=0,
+									 farg::Function=copy,
+								)::Tuple{<:Any,AbstractVector{<:AbstractString}}
 
 	i = findfirst(==(arg0), args_user)
 
 	isnothing(i) && return (false,args_user) 
 
-	return (true,
-					vcat(view(args_user, 1:i-1), view(args_user, i+1:length(args_user)))
+	@assert length(args_user)>=i+nvals "Not enough args for '$arg0' ($nvals required)"
+
+	return (nvals==0 ? true : farg(view(args_user, i+1:i+nvals)),
+					vcat(view(args_user, 1:i-1), 
+							 view(args_user, i+nvals+1:length(args_user)))
 					)
 
 end  
 
-function hasarg!(cmd::AbstractDict{<:AbstractString,<:Bool},
+#function hasarg(args_user::AbstractVector{<:AbstractString},
+#								arg0::AbstractString
+#								)::Tuple{Bool,AbstractVector{<:AbstractString}}
+#
+#	i = findfirst(==(arg0), args_user)
+#
+#	isnothing(i) && return (false,args_user) 
+#
+#	return (true,
+#					vcat(view(args_user, 1:i-1), view(args_user, i+1:length(args_user)))
+#					)
+#
+#end  
+
+function hasargval!(cmd::AbstractDict{<:AbstractString,<:Any},
 								args_user::AbstractVector{<:AbstractString},
-								arg0::AbstractString
+								k::AbstractString,
+								args...
 								)::AbstractVector{<:AbstractString}
 
-	ha0,au = hasarg(args_user,arg0)
+	v,rest = hasargval(args_user,k,args...)
 
-	setindex!(cmd,ha0,arg0)
+	setindex!(cmd,v,k)
 
-	return au
+	return rest
 
 end 
 
@@ -79,13 +98,16 @@ end
 function parse_input_args(args_user::AbstractVector{<:AbstractString},
 													)::Tuple{Vector{String},Dict}
 
-	options = Dict{String,Bool}()
+	options = Dict{String,Any}()
 
-	args_user = hasarg!(options, args_user, "kill")
+	args_user = hasargval!(options, args_user, "kill")
 
-	args_user = hasarg!(options, args_user, "all")
+	args_user = hasargval!(options, args_user, "all")
 
-	args_user = hasarg!(options, args_user, "print") 
+	args_user = hasargval!(options, args_user, "print") 
+
+	args_user = hasargval!(options, args_user, "pmax", 1, 
+												 Base.Fix1(parse,Int)∘only)
 
 	return (isempty(args_user) ? [gethostname()] : args_user, options)
 
@@ -95,7 +117,7 @@ end
 
 function foo(
 						 inp_hosts::AbstractVector{<:String},
-						 options::AbstractDict{<:AbstractString,Bool},
+						 options::AbstractDict{<:AbstractString,<:Any},
 						 tiers::AbstractVector{<:AbstractDict};
 						 )::Tuple{Vector{String},OrderedDict}
 
@@ -112,14 +134,25 @@ function foo(
 end 
 
 function jobsargs(run_hosts::AbstractVector{<:AbstractString},
-						 tier::OrderedDict;
-						 singlecore::Bool=false,
-						 min_p::Int=6 
+						 tier::OrderedDict,
+						 options::AbstractDict{<:AbstractString,<:Any};
+						 pmin::Int=6,
+#						 singlecore::Bool=false,
 						 )::OrderedDict
+
+
+	singlecore = options["pmax"] isa Int  
+
+	if singlecore
+
+		@assert options["pmax"]==1 "Only all-/singlecore supported"
+
+	end 
+
 
 	N = collect(values(tier))
 
-	totN::Int = singlecore ? sum(N) : div(sum(N), minimum(N))
+	totN = singlecore ? sum(N) : div(sum(N), minimum(N))
 
 	jobranges = Utils.PropDistributeBallsToBoxes_cumulRanges(totN, N)
 
@@ -131,7 +164,7 @@ function jobsargs(run_hosts::AbstractVector{<:AbstractString},
 	
 		R = only(R for (k,R)=zip(keys(tier),jobranges) if k==host)
 
-		if singlecore || (tier[host]<min_p)
+		if singlecore || (tier[host]<pmin)
 
 			ja[host] = (1,[(totN,i,i) for i=R])
 
@@ -236,7 +269,7 @@ end
 
 function get_commands(
 						 inp_hosts::AbstractVector{<:String},
-						 options::AbstractDict{<:AbstractString,Bool},
+						 options::AbstractDict{<:AbstractString,<:Any},
 							tiers::AbstractVector{<:AbstractDict},
 							args...;
 						 kwargs...
@@ -245,33 +278,29 @@ function get_commands(
 	run_hosts,tier = foo(inp_hosts, options, tiers) 
 
 	options["kill"] && return (run_hosts,cmdkill.(run_hosts))
-	
-	return (run_hosts,cmdsmain(jobsargs(run_hosts, tier; kwargs...), args...))
+
+
+	return (run_hosts,cmdsmain(jobsargs(run_hosts, tier, options; kwargs...), args...))
 
 end 
 
 
 function get_commands(
 							args_user::AbstractString,
-							tiers::AbstractVector{<:AbstractDict},
+#							tiers::AbstractVector{<:AbstractDict},
 							args...;
 						 kwargs...
 						 )::Tuple{Vector{String},Vector{Vector{String}}}
 
-	inp_hosts,options = parse_input_args(args_user)   
 
-	run_hosts,tier = foo(inp_hosts, options, tiers) 
-
-	options["kill"] && return (run_hosts,cmdkill.(run_hosts))
-	
-	return (run_hosts,cmdsmain(jobsargs(run_hosts, tier; kwargs...), args...))
+	get_commands(parse_input_args(args_user)..., args...; kwargs...)
 
 end 
 
 
 function run_commands(run_hosts::AbstractVector{<:AbstractString},
 							 run_cmds::AbstractVector{<:AbstractVector{<:AbstractString}},
-						 options::AbstractDict{<:AbstractString,Bool},
+						 options::AbstractDict{<:AbstractString,<:Any},
 							 )
 
 	run_ns = length.(run_cmds) 
