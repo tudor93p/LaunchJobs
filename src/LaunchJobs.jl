@@ -4,6 +4,14 @@ module LaunchJobs
 import myLibs: Utils  
 import OrderedCollections: OrderedDict
 
+
+#===========================================================================#
+#
+#
+#
+#---------------------------------------------------------------------------#
+
+
 #===========================================================================#
 #
 # Levenshtein distance -- Wagner–Fischer algorithm
@@ -59,6 +67,37 @@ function LevenshteinDistance(s::AbstractString, t::AbstractString)::Int
 
 
 end 
+
+
+#function split_jobs(A::AbstractVector, args...)::Vector{Int}
+#
+#	split_jobs(size(A,1), args...)
+#
+#end 
+
+function FillDistributeBallsToBoxes(nballs::Int, capacity::Int 
+																		)::Vector{Int}
+
+	nr_full_boxes, last_boxes =  divrem(nballs, capacity)
+
+	last_boxes==0 && return fill(capacity, nr_full_boxes) 
+
+	boxes = fill(capacity,nr_full_boxes+1)
+
+	boxes[end] = last_boxes 
+
+	return boxes  
+
+end 
+#function split_jobs_cumulRanges(args...)
+#
+#
+#	d = split_jobs(args[1:2]...)
+#
+#	return Utils.sepLengths_cumulRanges(d, args[3:end]...)
+#
+#end 
+#
 
 #===========================================================================#
 #
@@ -183,6 +222,8 @@ function parse_input_args(args_user::AbstractVector{<:AbstractString},
 	args_user = hasargval!(options, args_user, "pmax", 1, 
 												 Base.Fix1(parse,Int)∘only)
 
+	options["pmin"] = 5
+
 	return (options, unique(args_user))
 
 end 
@@ -208,46 +249,80 @@ function foo(
 
 end 
 
+function nr_max_procs(options::AbstractDict{<:AbstractString,<:Any},
+											args...)::Int 
+
+	nr_max_procs(options["pmax"], args...)
+
+end  
+
+function nr_max_procs(pmax::Bool, n::Int=1)::Int 
+	
+	n
+
+end  
+
+function nr_max_procs(pmax::Int, n::Int=1)::Int 
+
+	min(pmax,n)
+
+end 
+
+#						 options::AbstractDict{<:AbstractString,<:Any},
+#						n::Int; PMIN::Int=5, kwargs...
+#						)::Int 
+#
+#	N = isa(options["pmax"],Int) ? min(options["pmax"], n) : n 
+#
+#	return N<PMIN ? 1 : N
+#
+#end  
+
+function split_jobs_one(available_cores::Int, pmax::Int, pmin::Int
+												)::Vector{Int}
+
+	pmax<pmin && return ones(Int,available_cores)
+
+	boxes = FillDistributeBallsToBoxes(available_cores, pmax)
+
+	boxes[end]>=pmin && return boxes 
+
+	return vcat(view(boxes, 1:length(boxes)-1),
+							ones(Int, boxes[end])
+							)
+
+end 
+
+
+
 function jobsargs(run_hosts::AbstractVector{<:AbstractString},
 						 tier::OrderedDict,
 						 options::AbstractDict{<:AbstractString,<:Any};
-						 pmin::Int=6,
-#						 singlecore::Bool=false,
+						 kwargs...
 						 )::OrderedDict
-
-
-	singlecore = options["pmax"] isa Int  
-
-	if singlecore
-
-		@assert options["pmax"]==1 "Only all-/singlecore supported"
-
-	end 
-
 
 	N = collect(values(tier))
 
-	totN = singlecore ? sum(N) : div(sum(N), minimum(N))
+	totN = div(sum(N), nr_max_procs(options, minimum(N)))
 
 	jobranges = Utils.PropDistributeBallsToBoxes_cumulRanges(totN, N)
 
-
-	ja = OrderedDict{String,Tuple{Int,Vector{NTuple{3,Int}}}}() 
+	ja = OrderedDict{String,Vector{NTuple{4,Int}}}() 
 
 
 	for host in run_hosts 
 	
 		R = only(R for (k,R)=zip(keys(tier),jobranges) if k==host)
 
-		if singlecore || (tier[host]<pmin)
+		nr_procs = split_jobs_one(min(length(R),tier[host]), 
+															nr_max_procs(options, tier[host]),
+														 options["pmin"])
+															
 
-			ja[host] = (1,[(totN,i,i) for i=R])
 
-		else 
+		rs = Utils.PropDistributeBallsToBoxes_cumulRanges(length(R), nr_procs)
 
-			ja[host] = (tier[host], [(totN,R[1],R[end])])
-			
-		end 
+		ja[host] = [(n,totN,R[r[1]],R[r[end]]) for (n,r)=zip(nr_procs,rs)]
 
 	end 
 
@@ -255,6 +330,50 @@ function jobsargs(run_hosts::AbstractVector{<:AbstractString},
 	
 end  
 
+
+function cmdsmain(ja::OrderedDict, args...
+									)::Vector{Vector{String}}
+
+	[[cmdmain(host,a,args...) for a=A] for (host,A)=ja]
+
+end 
+
+function cmdmain(host::AbstractString, 
+								 (n,N,s,e)::NTuple{4,Int},
+						 		options::AbstractDict{<:AbstractString,<:Any},
+								 path::Union{AbstractString,AbstractVector{<:AbstractString}},
+								 fname::AbstractString="main")::String 
+
+	cmd = n<options["pmin"] ? "" : "-p $n -L ~/.julia/config/startup.jl"
+
+#	length(fname)>3 && fname[end-2:end]=="jl"
+
+	@assert !occursin("/",fname)
+
+	return nohupsshcmd(host, 
+									join(["julia", cmd, 
+												splitext(fname)[1]*".jl", N, s, e]," "),
+									path)
+
+end 
+
+
+
+function cmdkill(host::AbstractString, args...
+								 )::Vector{String}
+
+	if host!=gethostname()=="tudor-HP"
+
+		return [sshcmd(host, "pkill -9 julia -u pahomit &")]
+
+	end 
+
+	return ["pkill -9 julia"]
+#	@warn "kill command ignored when the target is the host"
+
+	return String[]
+
+end 
 
 function sshcmd(host::AbstractString,
 								cmd::AbstractString)::String 
@@ -296,49 +415,6 @@ function nohupsshcmd(host::AbstractString,
 end 
 
 
-function cmdmain(host::AbstractString, n::Int,
-								 args::NTuple{3,Int},
-								 path::Union{AbstractString,AbstractVector{<:AbstractString}},
-								 fname::AbstractString="main")::String 
-
-	cmd = n<6 ? "" : "-p $n -L ~/.julia/config/startup.jl"
-
-#	length(fname)>3 && fname[end-2:end]=="jl"
-
-	@assert !occursin("/",fname)
-
-	return nohupsshcmd(host, 
-									join(["julia", cmd, 
-												splitext(fname)[1]*".jl", args...]," "),
-									path)
-
-end 
-
-function cmdsmain(ja::OrderedDict, args...
-									)::Vector{Vector{String}}
-
-	[[cmdmain(host,n,nse,args...) for nse=NSE] for (host,(n,NSE))=ja]
-
-end 
-
-
-
-
-function cmdkill(host::AbstractString, args...
-								 )::Vector{String}
-
-	if host!=gethostname()=="tudor-HP"
-
-		return [sshcmd(host, "pkill -9 julia -u pahomit &")]
-
-	end 
-
-	return ["pkill -9 julia"]
-#	@warn "kill command ignored when the target is the host"
-
-	return String[]
-
-end 
 
 
 
@@ -355,7 +431,10 @@ function get_commands(
 	options["kill"] && return (run_hosts,cmdkill.(run_hosts))
 
 
-	return (run_hosts,cmdsmain(jobsargs(run_hosts, tier, options; kwargs...), args...))
+	return (run_hosts,
+					cmdsmain(jobsargs(run_hosts, tier, options; kwargs...), 
+									 options,
+									 args...))
 
 end 
 
