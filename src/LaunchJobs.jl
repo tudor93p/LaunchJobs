@@ -6,9 +6,66 @@ import OrderedCollections: OrderedDict
 
 #===========================================================================#
 #
+# Levenshtein distance -- Wagner–Fischer algorithm
+# More efficient -- store only two matrix rows 
+#
+#---------------------------------------------------------------------------# 
+
+function LevenshteinDistance(s::AbstractString, t::AbstractString)::Int 
+
+  # for all i and j, d[i,j] will hold the Levenshtein distance between
+  # the first i characters of s and the first j characters of t
+#  declare int d[0..m, 0..n]
+#  set each element in d to zero
+
+	m = length(s) 
+	n = length(t)
+
+	d = zeros(Int, m+1, n+1)
+ 
+  # source prefixes can be transformed into empty string by
+  # dropping all characters
+ # for i from 1 to m:
+ #   d[i, 0] := i
+
+	setindex!(d, 1:m, 2:m+1, 1)
+
+  # target prefixes can be reached from empty source prefix
+  # by inserting every character
+#  for j from 1 to n:
+#    d[0, j] := j
+
+	setindex!(d, 1:n, 1, 2:n+1)
+
+
+#  for j from 1 to n:
+#    for i from 1 to m:
+#      if s[i] = t[j]:
+#        substitutionCost := 0
+#      else:
+#        substitutionCost := 1
+#
+#      d[i, j] := minimum(d[i-1, j] + 1,                   # deletion
+#                         d[i, j-1] + 1,                   # insertion
+#                         d[i-1, j-1] + substitutionCost)  # substitution
+
+	for j=1:n, i=1:m 
+
+		d[i+1, j+1] = min(d[i, j+1] + 1, d[i+1, j] + 1, d[i, j] + (s[i]!=t[j]))
+		
+	end 
+
+  return d[m+1,n+1]
+
+
+end 
+
+#===========================================================================#
+#
 #
 #
 #---------------------------------------------------------------------------#
+
 
 
 function hasargval(args_user::AbstractVector{<:AbstractString}, 
@@ -59,13 +116,52 @@ function hasargval!(cmd::AbstractDict{<:AbstractString,<:Any},
 end 
 
 
-function findtiers(tiers::AbstractVector{<:AbstractDict},
+function findtier(tiers::AbstractVector{T},
 									hosts::AbstractVector{<:AbstractString}
-									)::Vector{Int}
+									)::Tuple{Int,Vector{String}
+													 } where T<:AbstractDict{<:AbstractString,Int}
+	
+	if isempty(hosts) 
+		
+		length(tiers)==1 && return (1, collect(keys(tiers))) 
+		# only possibility
 
-	[i for (i,t)=enumerate(tiers) if any(in(keys(t)),hosts)]
+		# guess
+		return findtier(tiers,[gethostname()]) 
 
-end 
+	end 
+
+
+	cands = [i for (i,t)=enumerate(tiers) if any(in(keys(t)),hosts)]
+
+	isempty(cands) && error("No (known) host provided")
+
+	length(cands)>1 && error("Hosts must belong to one single tier at a time")
+
+	hosts_ = intersect(hosts, keys(tiers[only(cands)]))
+
+	for host in setdiff(hosts, hosts_)
+
+		dist = Dict(k=>LevenshteinDistance(host,k) for t=tiers for k=keys(t))
+
+		dmin = minimum(values(dist))
+
+		if dmin<=2 
+
+			@warn string("Host '$host' not found. Did you mean any of: ", 
+									 [k for (k,d)=dist if d==dmin]," ?")
+	
+		else  
+
+			@warn "Host '$host' not known"
+
+		end 
+	end 
+
+	return (only(cands),  hosts_)
+
+end  
+
 
 function parse_input_args(args_user::AbstractString,
 													)::Tuple{Dict,Vector{String}}
@@ -87,8 +183,7 @@ function parse_input_args(args_user::AbstractVector{<:AbstractString},
 	args_user = hasargval!(options, args_user, "pmax", 1, 
 												 Base.Fix1(parse,Int)∘only)
 
-	return (options,
-					isempty(args_user) ? [gethostname()] : args_user)
+	return (options, unique(args_user))
 
 end 
 
@@ -100,12 +195,13 @@ function foo(
 						 tiers::AbstractVector{<:AbstractDict};
 						 )::Tuple{Vector{String},OrderedDict}
 
-	i_tiers = findtiers(tiers, inp_hosts)
+#	isempty(args_user) ? [gethostname()] : args_user 
 
-	@assert length(i_tiers)==1 "Hosts must belong to one single tier at a time"
 
-	D = OrderedDict(tiers[only(i_tiers)])
-	
+	i, inp_hosts = findtier(tiers, inp_hosts) 
+
+	D = OrderedDict(tiers[i])
+
 	return (options["all"] ? collect(keys(D)) : inp_hosts, D)
 
 #	(tier,run_hosts)
@@ -331,22 +427,21 @@ end
 function getrun_commands(
 						 options::AbstractDict{<:AbstractString,<:Any},
 						 args...; 
-#						 safe=nothing,#::Bool=true,
+						 safe=nothing,#::Bool=true,
 						 kwargs...)
 
 
-
-	rhc  = get_commands(options, args...; kwargs...) 
+	rh,rc = get_commands(options, args...; kwargs...) 
 
 	if !options["print"] 
 
 		if (safe isa Bool && safe) || !options["kill"] 
 
-			@info "Commands prepared. First: |$(rhc[2][1][1])|\ny: launch\nn: print "
+			@info "Commands prepared. First on $(rh[1]): |$(rc[1][1])|\ny: launch\nn: print "
 
 			if occursin("y",lowercase(readline(stdin)))   
 
-				run_commands(rhc..., options)
+				run_commands(rh, rc, options)
 
 			end 
 
@@ -356,7 +451,7 @@ function getrun_commands(
 	
 	end 
 
-	run_commands(rhc..., options)
+	run_commands(rh, rc, options)
 
 
 end  
