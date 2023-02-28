@@ -364,7 +364,7 @@ function cmdkill(host::AbstractString, args...
 
 	if host!=gethostname()=="tudor-HP"
 
-		return [sshcmd(host, "pkill -9 julia -u pahomit &")]
+		return [sshcmd(host, "bash; pkill -9 julia -u pahomit &")]
 
 	end 
 
