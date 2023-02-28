@@ -65,38 +65,16 @@ function findtiers(tiers::AbstractVector{<:AbstractDict},
 
 	[i for (i,t)=enumerate(tiers) if any(in(keys(t)),hosts)]
 
-#
-#			for j=i+1:length(tiers)
-#
-#				if any(in(keys(tiers[j])), hosts)
-#
-#
-#				end 
-#
-#			end 
-#
-#		end 
-#
-#	end 
-#
-
-#
-#	any(h->haskey(t,h),hosts) 
-#
-#
-#	D = filter(t->any(h->haskey(t,h),hosts),tiers) 
-#	@assert length(D)==1 "Hosts must belong to one single tier at a time"
-
 end 
 
 function parse_input_args(args_user::AbstractString,
-													)::Tuple{Vector{String},Dict}
+													)::Tuple{Dict,Vector{String}}
 
 	parse_input_args(split(args_user))
 
 end 
 function parse_input_args(args_user::AbstractVector{<:AbstractString},
-													)::Tuple{Vector{String},Dict}
+													)::Tuple{Dict,Vector{String}}
 
 	options = Dict{String,Any}()
 
@@ -109,15 +87,16 @@ function parse_input_args(args_user::AbstractVector{<:AbstractString},
 	args_user = hasargval!(options, args_user, "pmax", 1, 
 												 Base.Fix1(parse,Int)∘only)
 
-	return (isempty(args_user) ? [gethostname()] : args_user, options)
+	return (options,
+					isempty(args_user) ? [gethostname()] : args_user)
 
 end 
 
 
 
 function foo(
-						 inp_hosts::AbstractVector{<:String},
 						 options::AbstractDict{<:AbstractString,<:Any},
+						 inp_hosts::AbstractVector{<:String},
 						 tiers::AbstractVector{<:AbstractDict};
 						 )::Tuple{Vector{String},OrderedDict}
 
@@ -268,14 +247,14 @@ end
 
 
 function get_commands(
-						 inp_hosts::AbstractVector{<:String},
 						 options::AbstractDict{<:AbstractString,<:Any},
-							tiers::AbstractVector{<:AbstractDict},
+						 inp_hosts::AbstractVector{<:String},
+						 tiers::AbstractVector{<:AbstractDict},
 							args...;
 						 kwargs...
 						 )::Tuple{Vector{String},Vector{Vector{String}}}
 
-	run_hosts,tier = foo(inp_hosts, options, tiers) 
+	run_hosts,tier = foo(options, inp_hosts, tiers)
 
 	options["kill"] && return (run_hosts,cmdkill.(run_hosts))
 
@@ -286,12 +265,11 @@ end
 
 
 function get_commands(
-							args_user::AbstractString,
-#							tiers::AbstractVector{<:AbstractDict},
+							args_user::Union{AbstractString,
+															 <:AbstractVector{<:AbstractString}},
 							args...;
 						 kwargs...
 						 )::Tuple{Vector{String},Vector{Vector{String}}}
-
 
 	get_commands(parse_input_args(args_user)..., args...; kwargs...)
 
@@ -339,17 +317,26 @@ function run_commands(run_hosts::AbstractVector{<:AbstractString},
 	
 end 
 
-
-function getrun_commands(args_user::AbstractString,
+function getrun_commands(
+							args_user::Union{AbstractString,
+															 <:AbstractVector{<:AbstractString}},
 						 args...;
-						 safe=nothing,#::Bool=true,
 						 kwargs...
 						 )
 
-	inp_hosts,options = parse_input_args(args_user)  
+	getrun_commands(parse_input_args(args_user)..., args...; kwargs...)
 
-	rhc  = get_commands(inp_hosts, options, args...; kwargs...) 
+end 
 
+function getrun_commands(
+						 options::AbstractDict{<:AbstractString,<:Any},
+						 args...; 
+#						 safe=nothing,#::Bool=true,
+						 kwargs...)
+
+
+
+	rhc  = get_commands(options, args...; kwargs...) 
 
 	if !options["print"] 
 
