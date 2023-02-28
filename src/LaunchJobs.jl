@@ -197,8 +197,6 @@ function cmdmain(host::AbstractString, n::Int,
 
 #	length(fname)>3 && fname[end-2:end]=="jl"
 
-@show fname 
-
 	@assert !occursin("/",fname)
 
 	return nohupsshcmd(host, 
@@ -227,7 +225,8 @@ function cmdkill(host::AbstractString, args...
 
 	end 
 
-	@warn "kill command ignored when the target is the host"
+	return ["pkill -9 julia"]
+#	@warn "kill command ignored when the target is the host"
 
 	return String[]
 
@@ -235,7 +234,7 @@ end
 
 
 
-function commands(
+function get_commands(
 						 inp_hosts::AbstractVector{<:String},
 						 options::AbstractDict{<:AbstractString,Bool},
 							tiers::AbstractVector{<:AbstractDict},
@@ -252,8 +251,25 @@ function commands(
 end 
 
 
+function get_commands(
+							args_user::AbstractString,
+							tiers::AbstractVector{<:AbstractDict},
+							args...;
+						 kwargs...
+						 )::Tuple{Vector{String},Vector{Vector{String}}}
 
-function corge(run_hosts::AbstractVector{<:AbstractString},
+	inp_hosts,options = parse_input_args(args_user)   
+
+	run_hosts,tier = foo(inp_hosts, options, tiers) 
+
+	options["kill"] && return (run_hosts,cmdkill.(run_hosts))
+	
+	return (run_hosts,cmdsmain(jobsargs(run_hosts, tier; kwargs...), args...))
+
+end 
+
+
+function run_commands(run_hosts::AbstractVector{<:AbstractString},
 							 run_cmds::AbstractVector{<:AbstractVector{<:AbstractString}},
 						 options::AbstractDict{<:AbstractString,Bool},
 							 )
@@ -270,7 +286,7 @@ function corge(run_hosts::AbstractVector{<:AbstractString},
 	
 		s = string("\nRound $i/$run_maxn, hosts ",
 							 length(js),"/",length(run_hosts),
-							 " (", join(view(run_hosts,js),", "),")")
+							 " (", join(view(run_hosts,js),", "),")\n ")
 	
 		@info s
 
@@ -282,7 +298,7 @@ function corge(run_hosts::AbstractVector{<:AbstractString},
 
 			options["print"] && continue 
 	
-#			run(`sh -c $cmd`) 
+			run(`sh -c $cmd`) 
 	
 		end 
 	
@@ -295,16 +311,37 @@ function corge(run_hosts::AbstractVector{<:AbstractString},
 end 
 
 
-function qux(args_user::AbstractString,
+function getrun_commands(args_user::AbstractString,
 						 args...;
+						 safe=nothing,#::Bool=true,
 						 kwargs...
 						 )
 
 	inp_hosts,options = parse_input_args(args_user)  
 
-	rhc  = commands(inp_hosts, options, args...; kwargs...) 
+	rhc  = get_commands(inp_hosts, options, args...; kwargs...) 
 
-	corge(rhc..., options)
+
+	if !options["print"] 
+
+		if (safe isa Bool && safe) || !options["kill"] 
+
+			@info "Commands prepared. First: |$(rhc[2][1][1])|\ny: launch\nn: print "
+
+			if occursin("y",lowercase(readline(stdin)))   
+
+				run_commands(rhc..., options)
+
+			end 
+
+			options["print"] = true 
+
+		end 
+	
+	end 
+
+	run_commands(rhc..., options)
+
 
 end  
 
