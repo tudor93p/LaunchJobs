@@ -75,7 +75,7 @@ end
 #
 #end 
 
-function FillDistributeBallsToBoxes(nballs::Int, capacity::Int 
+function FillBoxesWithBalls(nballs::Int, capacity::Int 
 																		)::Vector{Int}
 
 	nr_full_boxes, last_boxes =  divrem(nballs, capacity)
@@ -289,7 +289,7 @@ function split_jobs_one(available_cores::Int, pmax::Int, pmin::Int
 
 	pmax<pmin && return ones(Int,available_cores)
 
-	boxes = FillDistributeBallsToBoxes(available_cores, pmax)
+	boxes = FillBoxesWithBalls(available_cores, pmax)
 
 	boxes[end]>=pmin && return boxes 
 
@@ -398,7 +398,7 @@ function cmdkill(host::AbstractString, args...
 
 	if host!=gethostname()=="tudor-HP"
 
-		return [sshcmd(host, "bash; pkill -9 julia -u pahomit &")]
+		return [sshcmd(host, "pkill -9 julia -u pahomit &")]
 
 	end 
 
