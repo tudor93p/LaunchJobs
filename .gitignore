@@ -1,0 +1,5 @@
+Manifest.toml 
+.*.swp 
+nohup.out 
+src/.*.swp 
+test/.*.swp

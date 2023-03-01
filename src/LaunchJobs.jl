@@ -69,34 +69,6 @@ function LevenshteinDistance(s::AbstractString, t::AbstractString)::Int
 end 
 
 
-#function split_jobs(A::AbstractVector, args...)::Vector{Int}
-#
-#	split_jobs(size(A,1), args...)
-#
-#end 
-
-function FillBoxesWithBalls(nballs::Int, capacity::Int 
-																		)::Vector{Int}
-
-	nr_full_boxes, last_boxes =  divrem(nballs, capacity)
-
-	last_boxes==0 && return fill(capacity, nr_full_boxes) 
-
-	boxes = fill(capacity,nr_full_boxes+1)
-
-	boxes[end] = last_boxes 
-
-	return boxes  
-
-end 
-#function split_jobs_cumulRanges(args...)
-#
-#
-#	d = split_jobs(args[1:2]...)
-#
-#	return Utils.sepLengths_cumulRanges(d, args[3:end]...)
-#
-#end 
 #
 
 #===========================================================================#
@@ -289,7 +261,7 @@ function split_jobs_one(available_cores::Int, pmax::Int, pmin::Int
 
 	pmax<pmin && return ones(Int,available_cores)
 
-	boxes = FillBoxesWithBalls(available_cores, pmax)
+	boxes = Utils.FillBoxesWithBalls(available_cores, pmax)
 
 	boxes[end]>=pmin && return boxes 
 
