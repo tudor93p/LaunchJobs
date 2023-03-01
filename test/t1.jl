@@ -16,6 +16,19 @@ tiers = [Dict("host11"=>10,"host12"=>21,"host13"=>1), Dict("host21"=>1,"tudor-HP
 path = [path1,path2]
 
 #LaunchJobs.getrun_commands("pmax 6 print all host11", tiers, [path1, path2])
-LaunchJobs.getrun_commands("pmax 5 print all host11", tiers, [path1, path2])
+#LaunchJobs.getrun_commands("pmax 5 print all host11", tiers, [path1, path2])
 #LaunchJobs.getrun_commands(["print","all","host11"], tiers, [path1, path2])
-#LaunchJobs.getrun_commands("print host11 all", tiers, [path1, path2]; singlecore=true)
+#LaunchJobs.getrun_commands("print host11 all", tiers, [path1, path2]; singlecore=true) 
+#
+
+tiers = [Dict("spaceml4"=>28, 
+              #"yoshi"=>12, 
+              "nut"=>23, "toad"=>38,
+              "taranis"=>16)
+         ]
+
+
+LaunchJobs.getrun_commands("nut all print pmax 1 nmax 2000 nmin 1000", tiers, path)
+
+
+

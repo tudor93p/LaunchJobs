@@ -222,6 +222,12 @@ function parse_input_args(args_user::AbstractVector{<:AbstractString},
 	args_user = hasargval!(options, args_user, "pmax", 1, 
 												 Base.Fix1(parse,Int)∘only)
 
+	args_user = hasargval!(options, args_user, "nmin", 1, 
+												 Base.Fix1(parse,Int)∘only)
+
+	args_user = hasargval!(options, args_user, "nmax", 1, 
+												 Base.Fix1(parse,Int)∘only)
+
 	options["pmin"] = 5
 
 	return (options, unique(args_user))
@@ -292,6 +298,24 @@ function split_jobs_one(available_cores::Int, pmax::Int, pmin::Int
 							)
 
 end 
+function tot_nr_jobs(N::Int, nmin::Bool, nmax::Int)::Int 
+
+	min(N,nmax)
+
+end 
+
+function tot_nr_jobs(N::Int, nmin::Int, nmax::Bool)::Int 
+
+	max(N,nmin)
+
+end 
+
+
+function tot_nr_jobs(N::Int, nmin::Int, nmax::Int)::Int 
+
+	min(max(N,nmin),nmax)
+
+end 
 
 
 
@@ -303,16 +327,26 @@ function jobsargs(run_hosts::AbstractVector{<:AbstractString},
 
 	N = collect(values(tier))
 
-	totN = div(sum(N), nr_max_procs(options, minimum(N)))
+	totN = div(sum(N), nr_max_procs(options, minimum(N))) 
 
-	jobranges = Utils.PropDistributeBallsToBoxes_cumulRanges(totN, N)
+	totN = tot_nr_jobs(totN, options["nmin"], options["nmax"])
+
+	jobranges = Utils.PropDistributeBallsToBoxes_cumulRanges(totN, N) 
 
 	ja = OrderedDict{String,Vector{NTuple{4,Int}}}() 
 
 
 	for host in run_hosts 
-	
-		R = only(R for (k,R)=zip(keys(tier),jobranges) if k==host)
+			
+		R = only(R for (k,R)=zip(keys(tier),jobranges) if k==host) 
+
+		if isempty(R) 
+
+			ja[host] = NTuple{4,Int}[]
+
+			continue
+
+		end 
 
 		nr_procs = split_jobs_one(min(length(R),tier[host]), 
 															nr_max_procs(options, tier[host]),
@@ -378,9 +412,12 @@ end
 function sshcmd(host::AbstractString,
 								cmd::AbstractString)::String 
 	
+	# also without 'nohup' ? 
+	
 	"nohup ssh pahomit@$host.ethz.ch '$cmd' &" 
 
-end 
+end  
+
 function nohupsshcmd(host::AbstractString,
 										 cmd::AbstractString,
 										 (path1,path2)::AbstractVector{<:AbstractString},
