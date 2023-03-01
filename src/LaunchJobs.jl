@@ -200,7 +200,8 @@ function parse_input_args(args_user::AbstractVector{<:AbstractString},
 	args_user = hasargval!(options, args_user, "nmax", 1, 
 												 Base.Fix1(parse,Int)∘only)
 
-	options["pmin"] = 5
+	args_user = hasargval!(options, args_user, "pmin", 1, 
+												 Base.Fix1(parse,Int)∘only)
 
 	return (options, unique(args_user))
 
@@ -234,6 +235,29 @@ function nr_max_procs(options::AbstractDict{<:AbstractString,<:Any},
 
 end  
 
+
+function nr_min_procs(pmin::Bool)::Int 
+	
+	6
+
+end   
+function nr_min_procs(options::AbstractDict{<:AbstractString,<:Any})::Int 
+
+	nr_min_procs(options["pmin"])
+
+end 
+
+
+
+function nr_min_procs(pmin::Int)::Int 
+
+	@assert pmin>0 
+
+	pmin
+
+end   
+
+
 function nr_max_procs(pmax::Bool, n::Int=1)::Int 
 	
 	n
@@ -256,8 +280,11 @@ end
 #
 #end  
 
-function split_jobs_one(available_cores::Int, pmax::Int, pmin::Int
+function split_jobs_one(available_cores::Int, pmax::Int, 
+												pmin_::Union{Int,Bool},
 												)::Vector{Int}
+
+	pmin = nr_min_procs(pmin_)
 
 	pmax<pmin && return ones(Int,available_cores)
 
@@ -279,6 +306,11 @@ end
 function tot_nr_jobs(N::Int, nmin::Int, nmax::Bool)::Int 
 
 	max(N,nmin)
+
+end 
+function tot_nr_jobs(N::Int, nmin::Bool, nmax::Bool)::Int 
+
+	N
 
 end 
 
@@ -304,6 +336,17 @@ function jobsargs(run_hosts::AbstractVector{<:AbstractString},
 	totN = tot_nr_jobs(totN, options["nmin"], options["nmax"])
 
 	jobranges = Utils.PropDistributeBallsToBoxes_cumulRanges(totN, N) 
+####
+# distribution used again below. Combine in a single operation 
+#
+#	for v in values(tier)
+# 	split_jobs_one(v, nr_max_procs(options, v), options["pmin"])
+# end 
+#
+# N = vcat(...) :
+#
+###
+
 
 	ja = OrderedDict{String,Vector{NTuple{4,Int}}}() 
 
@@ -320,15 +363,13 @@ function jobsargs(run_hosts::AbstractVector{<:AbstractString},
 
 		end 
 
-		nr_procs = split_jobs_one(min(length(R),tier[host]), 
+		nr_procs = split_jobs_one(tier[host], #min(length(R),tier[host]), 
 															nr_max_procs(options, tier[host]),
 														 options["pmin"])
-															
-
-
+		
 		rs = Utils.PropDistributeBallsToBoxes_cumulRanges(length(R), nr_procs)
 
-		ja[host] = [(n,totN,R[r[1]],R[r[end]]) for (n,r)=zip(nr_procs,rs)]
+		ja[host] = [(n,totN,R[r[1]],R[r[end]]) for (n,r)=zip(nr_procs,rs) if !isempty(r)]
 
 	end 
 
@@ -350,7 +391,7 @@ function cmdmain(host::AbstractString,
 								 path::Union{AbstractString,AbstractVector{<:AbstractString}},
 								 fname::AbstractString="main")::String 
 
-	cmd = n<options["pmin"] ? "" : "-p $n -L ~/.julia/config/startup.jl"
+	cmd = n<nr_min_procs(options) ? "" : "-p $n -L ~/.julia/config/startup.jl"
 
 #	length(fname)>3 && fname[end-2:end]=="jl"
 
