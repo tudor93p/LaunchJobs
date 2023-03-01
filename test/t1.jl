@@ -26,9 +26,24 @@ tiers = [Dict("spaceml4"=>28,
               "nut"=>23, "toad"=>38,
               "taranis"=>16)
          ]
+tiers = [Dict("spaceml4"=>28,
+              #"yoshi"=>12, 
+              "nut"=>23, 
+              "toad"=>38,
+              "taranis"=>16,
+              "horon"=>8,
+              "sia"=>8,
+              "re"=>12,
+              "neper"=>8,
+              "kis"=>8,
+              )
+         ]
 
 
-LaunchJobs.getrun_commands("nut all print pmax 1 nmax 2000 nmin 1000", tiers, path)
+
+LaunchJobs.getrun_commands("all nmin 1000 pmax 2 print",
+#													 "nut all print pmax 1 nmax 2000 nmin 1000", 
+													 tiers, path)
 
 
 

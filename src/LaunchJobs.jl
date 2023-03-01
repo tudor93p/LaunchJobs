@@ -162,7 +162,7 @@ function findtier(tiers::AbstractVector{T},
 	
 	if isempty(hosts) 
 		
-		length(tiers)==1 && return (1, collect(keys(tiers))) 
+		length(tiers)==1 && return (1, collect(keys(only(tiers))))
 		# only possibility
 
 		# guess
