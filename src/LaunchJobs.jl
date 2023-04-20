@@ -458,7 +458,8 @@ function nohupsshcmd(host::AbstractString,
 
 #	host!=gethostname()=="tudor-HP" || return cmd*" &"
 
-	nice = in(host, ["rick","morty"]) ? "nice -n 12 " : ""
+#	nice = in(host, ["rick","morty"]) ? "nice -n 12 " : ""
+	nice = in(host, ["rick","morty", "yoshi", "toad", "spaceml4"]) ? "nice -n 15 " : ""
 
 	return sshcmd(host, "bash; cd $path2; nohup $nice $cmd &")
 
